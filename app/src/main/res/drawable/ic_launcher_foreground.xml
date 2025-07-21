@@ -1,0 +1,46 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M0,0h108v108h-108z" />
+    
+    <!-- Sky -->
+    <path
+        android:fillColor="#87CEEB"
+        android:pathData="M0,0h108v36h-108z" />
+    
+    <!-- Ocean -->
+    <path
+        android:fillColor="#2196F3"
+        android:pathData="M0,36h108v36h-108z" />
+    
+    <!-- Beach Sand -->
+    <path
+        android:fillColor="#FFE4B5"
+        android:pathData="M0,72h108v36h-108z" />
+    
+    <!-- Sun -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M54,90m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    
+    <!-- Camera Lens (White Circle) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0" />
+    
+    <!-- Film Spool 1 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,44m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+    
+    <!-- Film Spool 2 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,64m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+</vector>
