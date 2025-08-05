@@ -20,12 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 
 @Composable
 fun PlayerRegistrationScreen(
     gameCode: String,
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateToGamePlay: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
@@ -36,6 +36,12 @@ fun PlayerRegistrationScreen(
     var playerFields by remember { mutableStateOf(List(8) { "" }) }
     var showSortearDuplasDialog by remember { mutableStateOf(false) }
     var showAddPlayerDialog by remember { mutableStateOf(false) }
+    
+    // Recarregar jogadores quando a tela for exibida
+    LaunchedEffect(Unit) {
+        Log.d("PlayerRegistrationScreen", "=== RECARREGANDO JOGADORES ===")
+        viewModel.reloadGeneralRanking()
+    }
     
     // Converter lista de Player para lista de nomes
     val savedPlayerNames = savedPlayers.map { it.name }
@@ -172,18 +178,8 @@ fun PlayerRegistrationScreen(
                     // Criar lista de jogadores usando os salvos
                     val players = playerFields.filter { it.isNotBlank() }.map { playerName ->
                         val trimmedName = playerName.trim()
-                        // Buscar jogador já salvo para preservar pontos
-                        val savedPlayer = savedPlayers.find { 
-                            it.name.trim().equals(trimmedName, ignoreCase = true) 
-                        }
-                        
-                        if (savedPlayer != null) {
-                            Log.d("PlayerRegistrationScreen", "Usando jogador salvo: ${savedPlayer.name} com ${savedPlayer.totalPoints} pontos")
-                            savedPlayer
-                        } else {
-                            Log.e("PlayerRegistrationScreen", "ERRO: Jogador não encontrado: $trimmedName")
-                            com.beach.super8.model.Player(name = trimmedName)
-                        }
+                        // Criar jogador SEM pontos antigos para este jogo
+                        com.beach.super8.model.Player(name = trimmedName)
                     }
                     
                     Log.d("PlayerRegistrationScreen", "Lista final de jogadores: ${players.map { "${it.name}: ${it.totalPoints} pontos" }}")
@@ -349,10 +345,10 @@ private fun AddPlayerButtonSection(
                     modifier = Modifier.size(28.dp)
                 )
             }
-            
             Spacer(modifier = Modifier.width(16.dp))
-            
-            Column {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
                 Text(
                     text = "Cadastrar Atleta",
                     fontSize = 18.sp,
@@ -365,9 +361,6 @@ private fun AddPlayerButtonSection(
                     color = Color.Gray
                 )
             }
-            
-            Spacer(modifier = Modifier.weight(1f))
-            
             IconButton(
                 onClick = onAddPlayer,
                 modifier = Modifier

@@ -306,93 +306,45 @@ class GameViewModel : ViewModel() {
     }
     
     // Atualizar placar da rodada atual
-    fun updateRoundScore(gameIndex: Int, pair1Score: Int, pair2Score: Int) {
+    fun updateRoundScore(roundIndex: Int, gameIndex: Int, pair1Score: Int, pair2Score: Int) {
         Log.d("GameViewModel", "=== FUNÇÃO UPDATE ROUND SCORE INICIADA ===")
-        Log.d("GameViewModel", "Parâmetros recebidos: gameIndex=$gameIndex, pair1Score=$pair1Score, pair2Score=$pair2Score")
-        
-        try {
-            Log.d("GameViewModel", "=== UPDATE ROUND SCORE CHAMADO ===")
-            Log.d("GameViewModel", "GameIndex: $gameIndex, Pair1Score: $pair1Score, Pair2Score: $pair2Score")
-            
-            val round = _currentRound.value
-            val game = _currentGame.value
-            
-            Log.d("GameViewModel", "Round atual: ${round != null}")
-            Log.d("GameViewModel", "Game atual: ${game != null}")
-            
-            if (round == null) {
-                Log.e("GameViewModel", "ERRO: Round atual é null!")
-                return
-            }
-            
-            if (game == null) {
-                Log.e("GameViewModel", "ERRO: Game atual é null!")
-                return
-            }
-            
-            Log.d("GameViewModel", "Rodada atual: ${round.roundNumber}")
-            Log.d("GameViewModel", "Jogadores antes da atualização: ${game.players.map { "${it.name}: ${it.totalPoints} pontos" }}")
-            
-            if (pair1Score + pair2Score != 6) {
-                Log.d("GameViewModel", "Soma dos pontos não é 6 (${pair1Score + pair2Score}), ignorando")
-                return
-            }
-            
-            val updatedRound = when (gameIndex) {
-                0 -> round.copy(
-                    game1 = round.game1.copy(
-                        pair1Score = pair1Score,
-                        pair2Score = pair2Score,
-                        isCompleted = true
-                    )
-                )
-                1 -> round.copy(
-                    game2 = round.game2.copy(
-                        pair1Score = pair1Score,
-                        pair2Score = pair2Score,
-                        isCompleted = true
-                    )
-                )
-                else -> {
-                    Log.e("GameViewModel", "ERRO: GameIndex inválido: $gameIndex")
-                    return
-                }
-            }
-            
-            // Verificar se ambos os jogos da rodada estão completos
-            val isRoundCompleted = updatedRound.game1.isCompleted && updatedRound.game2.isCompleted
-            
-            val finalRound = if (isRoundCompleted) {
-                updatedRound.copy(isCompleted = true)
-            } else {
-                updatedRound
-            }
-            
-            Log.d("GameViewModel", "Rodada completada: $isRoundCompleted")
-            
-            // Atualizar rodada primeiro
-            _currentRound.value = finalRound
-            
-            // Atualizar jogo com a nova rodada
-            val updatedRounds = game.rounds.toMutableList()
-            val roundIndex = updatedRounds.indexOfFirst { it.roundNumber == round.roundNumber }
-            if (roundIndex >= 0) {
-                updatedRounds[roundIndex] = finalRound
-            }
-            
-            // Atualizar o jogo com as rodadas atualizadas
-            _currentGame.value = game.copy(rounds = updatedRounds)
-            
-            // SALVAR JOGO ATUAL APÓS ATUALIZAR PLACAR
-            saveCurrentGame()
-            
-            // NÃO processar pontos aqui - apenas quando a rodada for finalizada
-            Log.d("GameViewModel", "Placar atualizado. Pontos serão processados quando a rodada for finalizada.")
-            Log.d("GameViewModel", "Jogadores após atualização: ${_currentGame.value?.players?.map { "${it.name}: ${it.totalPoints} pontos" }}")
-            Log.d("GameViewModel", "=== UPDATE ROUND SCORE CONCLUÍDO ===")
-        } catch (e: Exception) {
-            Log.e("GameViewModel", "ERRO AO ATUALIZAR PLACAR: ${e.message}", e)
+        val game = _currentGame.value ?: return
+        val updatedRounds = game.rounds.toMutableList()
+        if (roundIndex < 0 || roundIndex >= updatedRounds.size) return
+        val round = updatedRounds[roundIndex]
+
+        fun isValidScore(s1: Int, s2: Int) = (s1 in 0..6 && s2 in 0..6 && s1 + s2 == 6)
+
+        val updatedRound = when (gameIndex) {
+            0 -> round.copy(
+                game1 = round.game1.copy(
+                    pair1Score = pair1Score,
+                    pair2Score = pair2Score,
+                    isCompleted = isValidScore(pair1Score, pair2Score)
+                ),
+                isCompleted = false
+            )
+            1 -> round.copy(
+                game2 = round.game2.copy(
+                    pair1Score = pair1Score,
+                    pair2Score = pair2Score,
+                    isCompleted = isValidScore(pair1Score, pair2Score)
+                ),
+                isCompleted = false
+            )
+            else -> round
         }
+        val finalRound = if (updatedRound.game1.isCompleted && updatedRound.game2.isCompleted) {
+            updatedRound.copy(isCompleted = true)
+        } else {
+            updatedRound.copy(isCompleted = false)
+        }
+        updatedRounds[roundIndex] = finalRound
+        val updatedGame = game.copy(rounds = updatedRounds)
+        recalculatePlayerPoints(updatedGame)
+        _currentRound.value = finalRound // Força atualização da rodada atual
+        _currentGame.value = updatedGame // Força atualização do jogo atual
+        saveCurrentGame()
     }
     
     private fun updatePlayerPoints(gameMatch: com.beach.super8.model.GameMatch) {
@@ -421,18 +373,17 @@ class GameViewModel : ViewModel() {
     fun finishTournament() {
         val game = _currentGame.value ?: return
         val currentRound = _currentRound.value ?: return
-        
         try {
             Log.d("GameViewModel", "=== FINALIZANDO TORNEIO ===")
             Log.d("GameViewModel", "Rodada atual: ${currentRound.roundNumber}")
             Log.d("GameViewModel", "Jogadores da partida: ${game.players.map { "${it.name}: ${it.totalPoints} pontos" }}")
-            
+
             // Verificar se todos os jogos foram completados
             val totalGames = game.rounds.sumOf { round ->
                 (if (round.game1.isCompleted) 1 else 0) + (if (round.game2.isCompleted) 1 else 0)
             }
             Log.d("GameViewModel", "Total de jogos completados: $totalGames de 2")
-            
+
             // Processar pontos da última rodada se estiver completa
             if (currentRound.isCompleted) {
                 Log.d("GameViewModel", "Processando pontos da última rodada (${currentRound.roundNumber})...")
@@ -442,62 +393,48 @@ class GameViewModel : ViewModel() {
             } else {
                 Log.d("GameViewModel", "Última rodada não está completa, não processando pontos")
             }
-            
+
             // Calcular vencedor
-            val winner = _currentGame.value?.players?.maxByOrNull { it.totalPoints }
+            val updatedGame = _currentGame.value // sempre pegar o mais atualizado
+            val winner = updatedGame?.players?.maxByOrNull { it.totalPoints }
             Log.d("GameViewModel", "Vencedor da partida: ${winner?.name} com ${winner?.totalPoints} pontos")
-            
-            val finishedGame = _currentGame.value?.copy(
+
+            val finishedGame = updatedGame?.copy(
                 isFinished = true,
                 winner = winner
             ) ?: return
-            
+
             // Adicionar à lista de jogos finalizados
             val updatedFinishedGames = _finishedGames.value.toMutableList()
             updatedFinishedGames.add(finishedGame)
             _finishedGames.value = updatedFinishedGames
-            
+
             // Somar pontos da partida para a pontuação geral dos jogadores
             Log.d("GameViewModel", "=== SOMANDO PONTOS DA PARTIDA PARA PONTUAÇÃO GERAL ===")
-            _currentGame.value?.players?.forEach { gamePlayer ->
+            finishedGame.players.forEach { gamePlayer ->
                 Log.d("GameViewModel", "Processando jogador: ${gamePlayer.name} com ${gamePlayer.totalPoints} pontos da partida")
-                
-                // Buscar o jogador na lista de jogadores salvos
                 val currentList = _savedPlayers.value.toMutableList()
-                val existingIndex = currentList.indexOfFirst { 
-                    it.name.trim().equals(gamePlayer.name.trim(), ignoreCase = true) 
+                val existingIndex = currentList.indexOfFirst {
+                    it.name.trim().equals(gamePlayer.name.trim(), ignoreCase = true)
                 }
-                
                 if (existingIndex >= 0) {
-                    // Jogador já existe - somar pontos da partida
                     val existingPlayer = currentList[existingIndex]
                     val updatedPlayer = existingPlayer.copy(
                         totalPoints = existingPlayer.totalPoints + gamePlayer.totalPoints,
                         gamesPlayed = existingPlayer.gamesPlayed + 1
                     )
-                    
                     Log.d("GameViewModel", "Jogador existente: ${existingPlayer.name}")
                     Log.d("GameViewModel", "Pontos antigos: ${existingPlayer.totalPoints}, pontos da partida: ${gamePlayer.totalPoints}, total: ${updatedPlayer.totalPoints}")
-                    
                     currentList[existingIndex] = updatedPlayer
                 } else {
-                    // Novo jogador - adicionar com pontos da partida
                     Log.d("GameViewModel", "Novo jogador: ${gamePlayer.name}")
                     currentList.add(gamePlayer)
                 }
-                
-                // Atualizar a lista de jogadores salvos
                 _savedPlayers.value = currentList
                 savePlayersToPreferences(currentList)
             }
-            
-            // Atualizar estatísticas
             updateStatistics()
             saveFinishedGamesToPreferences(updatedFinishedGames)
-            
-            // NÃO LIMPAR JOGO ATUAL - MANTER PARA RANQUEAMENTO FINAL
-            // clearCurrentGame() - REMOVIDO PARA NÃO QUEBRAR RANQUEAMENTO
-            
             Log.d("GameViewModel", "Torneio finalizado com sucesso!")
             Log.d("GameViewModel", "Pontuação geral atualizada: ${_savedPlayers.value.map { "${it.name}: ${it.totalPoints} pontos" }}")
         } catch (e: Exception) {
@@ -545,35 +482,35 @@ class GameViewModel : ViewModel() {
                     listOf(listOf(1, 5), listOf(7, 8)),
                     listOf(listOf(2, 3), listOf(4, 6))
                 ),
-                // RODADA 2: 1&2 vs 3&4, 5&6 vs 7&8
+                // RODADA 2: 4&7 vs 6&8, 1&2 vs 3&5
                 listOf(
-                    listOf(listOf(1, 2), listOf(3, 4)),
-                    listOf(listOf(5, 6), listOf(7, 8))
+                    listOf(listOf(4, 7), listOf(6, 8)),
+                    listOf(listOf(1, 2), listOf(3, 5))
                 ),
-                // RODADA 3: 1&3 vs 2&4, 5&7 vs 6&8
+                // RODADA 3: 3&4 vs 5&7, 2&6 vs 1&8
                 listOf(
-                    listOf(listOf(1, 3), listOf(2, 4)),
-                    listOf(listOf(5, 7), listOf(6, 8))
+                    listOf(listOf(3, 4), listOf(5, 7)),
+                    listOf(listOf(2, 6), listOf(1, 8))
                 ),
-                // RODADA 4: 1&4 vs 2&3, 5&8 vs 6&7
+                // RODADA 4: 1&6 vs 4&5, 3&7 vs 2&8
                 listOf(
-                    listOf(listOf(1, 4), listOf(2, 3)),
-                    listOf(listOf(5, 8), listOf(6, 7))
+                    listOf(listOf(1, 6), listOf(4, 5)),
+                    listOf(listOf(3, 7), listOf(2, 8))
                 ),
-                // RODADA 5: 1&6 vs 2&5, 3&8 vs 4&7
+                // RODADA 5: 5&6 vs 2&7, 1&4 vs 3&8
                 listOf(
-                    listOf(listOf(1, 6), listOf(2, 5)),
-                    listOf(listOf(3, 8), listOf(4, 7))
+                    listOf(listOf(5, 6), listOf(2, 7)),
+                    listOf(listOf(1, 4), listOf(3, 8))
                 ),
-                // RODADA 6: 1&7 vs 2&6, 3&5 vs 4&8
+                // RODADA 6: 4&8 vs 2&5, 6&7 vs 1&3
                 listOf(
-                    listOf(listOf(1, 7), listOf(2, 6)),
-                    listOf(listOf(3, 5), listOf(4, 8))
+                    listOf(listOf(4, 8), listOf(2, 5)),
+                    listOf(listOf(6, 7), listOf(1, 3))
                 ),
-                // RODADA 7: 1&8 vs 2&7, 3&6 vs 4&5
+                // RODADA 7: 1&7 vs 2&4, 3&6 vs 5&8
                 listOf(
-                    listOf(listOf(1, 8), listOf(2, 7)),
-                    listOf(listOf(3, 6), listOf(4, 5))
+                    listOf(listOf(1, 7), listOf(2, 4)),
+                    listOf(listOf(3, 6), listOf(5, 8))
                 )
             )
             
@@ -654,21 +591,25 @@ class GameViewModel : ViewModel() {
                 
                 Log.d("GameViewModel", "JSON jogadores: $jsonPlayers")
                 
-                if (jsonPlayers != null) {
+                if (jsonPlayers != null && jsonPlayers.isNotEmpty()) {
                     val type = object : TypeToken<List<Player>>() {}.type
                     val players: List<Player> = Gson().fromJson(jsonPlayers, type)
                     persistentPlayers.clear()
                     persistentPlayers.addAll(players)
                     _savedPlayers.value = persistentPlayers.toList()
                     Log.d("GameViewModel", "Jogadores carregados de SharedPreferences: ${persistentPlayers.size}")
+                    Log.d("GameViewModel", "Jogadores carregados: ${persistentPlayers.map { "${it.name}: ${it.totalPoints} pontos" }}")
                 } else {
                     Log.d("GameViewModel", "Nenhum jogador encontrado em SharedPreferences.")
+                    _savedPlayers.value = emptyList()
                 }
             } ?: run {
                 Log.d("GameViewModel", "Contexto não disponível para carregar jogadores")
+                _savedPlayers.value = emptyList()
             }
         } catch (e: Exception) {
             Log.e("GameViewModel", "ERRO AO CARREGAR JOGADORES: ${e.message}", e)
+            _savedPlayers.value = emptyList()
         }
     }
     
@@ -709,7 +650,7 @@ class GameViewModel : ViewModel() {
     private fun savePlayersToPreferences(players: List<Player>) {
         try {
             Log.d("GameViewModel", "=== SALVANDO JOGADORES ===")
-            Log.d("GameViewModel", "Jogadores para salvar: ${players.map { it.name }}")
+            Log.d("GameViewModel", "Jogadores para salvar: ${players.map { "${it.name}: ${it.totalPoints} pontos" }}")
             
             context?.let { context ->
                 val sharedPreferences: SharedPreferences = context.getSharedPreferences("Super8Prefs", Context.MODE_PRIVATE)
@@ -717,8 +658,14 @@ class GameViewModel : ViewModel() {
                 val gson = Gson()
                 val jsonPlayers = gson.toJson(players)
                 editor.putString("savedPlayers", jsonPlayers)
-                editor.apply()
-                Log.d("GameViewModel", "Jogadores salvos com sucesso!")
+                val success = editor.commit() // Usar commit() em vez de apply() para garantir
+                Log.d("GameViewModel", "Jogadores salvos com sucesso! Success: $success")
+                
+                // Verificar se salvou
+                val savedJson = sharedPreferences.getString("savedPlayers", "")
+                Log.d("GameViewModel", "Verificação - JSON salvo: ${savedJson?.take(100)}...")
+            } ?: run {
+                Log.e("GameViewModel", "Contexto não disponível para salvar jogadores!")
             }
         } catch (e: Exception) {
             Log.e("GameViewModel", "ERRO AO SALVAR JOGADORES: ${e.message}", e)
@@ -908,8 +855,17 @@ class GameViewModel : ViewModel() {
         try {
             Log.d("GameViewModel", "=== SALVANDO JOGO NO HISTÓRICO ===")
             Log.d("GameViewModel", "Jogo: ${game.gameCode}")
-            Log.d("GameViewModel", "Jogadores: ${game.players.map { "${it.name}: ${it.totalPoints} pontos" }}")
+            Log.d("GameViewModel", "Jogadores do jogo: ${game.players.map { "${it.name}: ${it.totalPoints} pontos" }}")
             Log.d("GameViewModel", "Context: ${context != null}")
+            
+            // Verificar se o jogo já foi processado (está na lista de finalizados)
+            val gameAlreadyProcessed = _finishedGames.value.any { it.gameCode == game.gameCode }
+            
+            if (gameAlreadyProcessed) {
+                Log.d("GameViewModel", "=== JOGO JÁ PROCESSADO, PULANDO ===")
+                Log.d("GameViewModel", "Jogo ${game.gameCode} já está na lista de finalizados")
+                return
+            }
             
             // Marcar o jogo como finalizado
             val finishedGame = game.copy(isFinished = true)
@@ -922,13 +878,47 @@ class GameViewModel : ViewModel() {
             updatedFinishedGames.add(finishedGame)
             _finishedGames.value = updatedFinishedGames
             
-            Log.d("GameViewModel", "Jogo adicionado à lista. Total: ${updatedFinishedGames.size}")
+            // Atualizar ranking geral dos jogadores
+            Log.d("GameViewModel", "=== ATUALIZANDO RANKING GERAL ===")
+            Log.d("GameViewModel", "Ranking atual antes da soma: ${_savedPlayers.value.map { "${it.name}: ${it.totalPoints} pontos" }}")
             
-            // Salvar nas preferências
+            finishedGame.players.forEach { gamePlayer ->
+                Log.d("GameViewModel", "Processando jogador: ${gamePlayer.name} com ${gamePlayer.totalPoints} pontos do torneio")
+                
+                val currentList = _savedPlayers.value.toMutableList()
+                val existingIndex = currentList.indexOfFirst {
+                    it.name.trim().equals(gamePlayer.name.trim(), ignoreCase = true)
+                }
+                
+                if (existingIndex >= 0) {
+                    val existingPlayer = currentList[existingIndex]
+                    val oldPoints = existingPlayer.totalPoints
+                    val newPoints = oldPoints + gamePlayer.totalPoints
+                    
+                    val updatedPlayer = existingPlayer.copy(
+                        totalPoints = newPoints,
+                        gamesPlayed = existingPlayer.gamesPlayed + 1
+                    )
+                    
+                    Log.d("GameViewModel", "Jogador existente: ${existingPlayer.name}")
+                    Log.d("GameViewModel", "Pontos antigos: $oldPoints, pontos do torneio: ${gamePlayer.totalPoints}, total: $newPoints")
+                    
+                    currentList[existingIndex] = updatedPlayer
+                } else {
+                    Log.d("GameViewModel", "Novo jogador: ${gamePlayer.name} com ${gamePlayer.totalPoints} pontos")
+                    currentList.add(gamePlayer.copy(gamesPlayed = 1))
+                }
+                
+                _savedPlayers.value = currentList
+                savePlayersToPreferences(currentList)
+            }
+            
+            Log.d("GameViewModel", "Ranking atualizado: ${_savedPlayers.value.map { "${it.name}: ${it.totalPoints} pontos" }}")
+            
+            updateStatistics()
             saveFinishedGamesToPreferences(updatedFinishedGames)
-            
             Log.d("GameViewModel", "Jogo salvo no histórico e marcado como finalizado!")
-            Log.d("GameViewModel", "Edições agora estão bloqueadas!")
+            Log.d("GameViewModel", "Ranking geral atualizado com sucesso!")
         } catch (e: Exception) {
             Log.e("GameViewModel", "ERRO AO SALVAR JOGO NO HISTÓRICO: ${e.message}", e)
         }
@@ -995,30 +985,67 @@ class GameViewModel : ViewModel() {
     }
     
     // Recalcular pontos dos jogadores baseado nas rodadas
-    private fun recalculatePlayerPoints(game: Game) {
+    fun recalculatePlayerPoints(game: Game) {
         try {
             Log.d("GameViewModel", "=== RECALCULANDO PONTOS DOS JOGADORES ===")
-            
             // Zerar pontos de todos os jogadores
             val updatedPlayers = game.players.map { it.copy(totalPoints = 0) }.toMutableList()
-            
             // Calcular pontos baseado em todos os jogos completados
             game.rounds.forEach { round ->
                 // Jogo 1
                 if (round.game1.isCompleted) {
-                    updatePlayerPointsFromGame(round.game1, updatedPlayers)
+                    val p1 = round.game1.pair1.first
+                    val p2 = round.game1.pair1.second
+                    val p3 = round.game1.pair2.first
+                    val p4 = round.game1.pair2.second
+                    val s1 = round.game1.pair1Score
+                    val s2 = round.game1.pair2Score
+                    updatedPlayers.find { it.id == p1.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s1)
+                    }
+                    updatedPlayers.find { it.id == p2.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s1)
+                    }
+                    updatedPlayers.find { it.id == p3.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s2)
+                    }
+                    updatedPlayers.find { it.id == p4.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s2)
+                    }
                 }
-                
                 // Jogo 2
                 if (round.game2.isCompleted) {
-                    updatePlayerPointsFromGame(round.game2, updatedPlayers)
+                    val p1 = round.game2.pair1.first
+                    val p2 = round.game2.pair1.second
+                    val p3 = round.game2.pair2.first
+                    val p4 = round.game2.pair2.second
+                    val s1 = round.game2.pair1Score
+                    val s2 = round.game2.pair2Score
+                    updatedPlayers.find { it.id == p1.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s1)
+                    }
+                    updatedPlayers.find { it.id == p2.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s1)
+                    }
+                    updatedPlayers.find { it.id == p3.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s2)
+                    }
+                    updatedPlayers.find { it.id == p4.id }?.let { player ->
+                        val idx = updatedPlayers.indexOf(player)
+                        updatedPlayers[idx] = player.copy(totalPoints = player.totalPoints + s2)
+                    }
                 }
             }
-            
             // Atualizar o jogo com os novos pontos
             val updatedGame = game.copy(players = updatedPlayers)
             _currentGame.value = updatedGame
-            
             Log.d("GameViewModel", "Pontos recalculados com sucesso!")
             Log.d("GameViewModel", "Jogadores finais: ${updatedPlayers.map { "${it.name}: ${it.totalPoints} pontos" }}")
         } catch (e: Exception) {
@@ -1052,6 +1079,17 @@ class GameViewModel : ViewModel() {
             }
         } catch (e: Exception) {
             Log.e("GameViewModel", "ERRO AO ATUALIZAR PONTOS DO JOGO: ${e.message}", e)
+        }
+    }
+
+    // Função para recarregar dados do ranking geral
+    fun reloadGeneralRanking() {
+        try {
+            Log.d("GameViewModel", "=== RECARREGANDO RANKING GERAL ===")
+            loadSavedPlayers()
+            Log.d("GameViewModel", "Ranking geral recarregado: ${_savedPlayers.value.map { "${it.name}: ${it.totalPoints} pontos" }}")
+        } catch (e: Exception) {
+            Log.e("GameViewModel", "ERRO AO RECARREGAR RANKING GERAL: ${e.message}", e)
         }
     }
 
@@ -1222,6 +1260,16 @@ class GameViewModel : ViewModel() {
         NOT_FOUND,  // Código não encontrado
         FINISHED,   // Jogo já finalizado
         VALID       // Código válido
+    }
+
+    fun updateAndSaveFinishedGames(updatedGame: Game) {
+        val finishedGamesList = _finishedGames.value.toMutableList()
+        val idx = finishedGamesList.indexOfFirst { it.gameCode == updatedGame.gameCode }
+        if (idx >= 0) {
+            finishedGamesList[idx] = updatedGame
+            _finishedGames.value = finishedGamesList
+            saveFinishedGamesToPreferences(finishedGamesList)
+        }
     }
 }
 

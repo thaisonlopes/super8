@@ -21,36 +21,42 @@ import com.beach.super8.model.Game
 import com.beach.super8.model.GameMatch
 import com.beach.super8.model.Round
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 import androidx.compose.ui.window.Dialog
+import androidx.compose.animation.animateContentSize
 
 @Composable
 fun GameSpecificHistoryScreen(
     gameCode: String,
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateBack: () -> Unit
 ) {
     val currentGame by viewModel.currentGame.collectAsState()
     val finishedGames by viewModel.finishedGames.collectAsState()
-    var showEditDialog by remember { mutableStateOf(false) }
-    var editRoundIndex by remember { mutableStateOf(-1) }
-    var editGameIndex by remember { mutableStateOf(-1) }
-    var editGame by remember { mutableStateOf<GameMatch?>(null) }
-
-    // Buscar o jogo pelo código
-    val game = when {
-        currentGame?.gameCode == gameCode -> currentGame
-        else -> finishedGames.find { it.gameCode == gameCode }
+    
+    // Carregar detalhes do jogo quando a tela for iniciada
+    LaunchedEffect(gameCode) {
+        // Não precisamos mais chamar loadGameDetails aqui
+        Log.d("GameSpecificHistoryScreen", "Tela iniciada para gameCode: $gameCode")
     }
 
+    // Buscar o jogo pelo código
+    val game = currentGame?.takeIf { it.gameCode == gameCode }
+        ?: finishedGames.find { it.gameCode == gameCode }
+
+    Log.d("GameSpecificHistoryScreen", "=== BUSCANDO JOGO ===")
+    Log.d("GameSpecificHistoryScreen", "GameCode procurado: $gameCode")
+    Log.d("GameSpecificHistoryScreen", "CurrentGame: ${currentGame?.gameCode}")
+    Log.d("GameSpecificHistoryScreen", "FinishedGames: ${finishedGames.map { it.gameCode }}")
+    Log.d("GameSpecificHistoryScreen", "Jogo encontrado: ${game?.gameCode} (ID: ${game?.id})")
+
     if (game == null) {
+        Log.e("GameSpecificHistoryScreen", "JOGO NÃO ENCONTRADO!")
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Torneio não encontrado", color = Color.Red, fontSize = 20.sp)
         }
         return
     }
-
-    val isEditable = !game.isFinished
 
     Box(
         modifier = Modifier
@@ -66,103 +72,310 @@ fun GameSpecificHistoryScreen(
             )
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Botão voltar simples no topo
-            Row(
+            // Header com botão voltar
+            Surface(
+                tonalElevation = 4.dp,
+                shadowElevation = 8.dp,
+                color = OceanBlue,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.Default.ArrowBack, 
+                            contentDescription = "Voltar", 
+                            tint = Color.White, 
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "Rodadas do Torneio ${game.gameCode}",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Resultados e estatísticas",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Carregar dados reais do jogo
+            val gameId = when (val id = game.id) {
+                is String -> id.toIntOrNull()
+                is Int -> id
+                is Number -> id.toInt()
+                else -> null
+            }
+            var gameDetails by remember { mutableStateOf<Map<String, Any>?>(null) }
+            
+            Log.d("GameSpecificHistoryScreen", "=== INICIANDO CARREGAMENTO ===")
+            Log.d("GameSpecificHistoryScreen", "Game ID original: ${game.id}")
+            Log.d("GameSpecificHistoryScreen", "Game ID parsed: $gameId")
+            Log.d("GameSpecificHistoryScreen", "Game: $game")
+            Log.d("GameSpecificHistoryScreen", "GameCode: $gameCode")
+            
+            LaunchedEffect(gameId) {
+                if (gameId != null) {
+                    try {
+                        Log.d("GameSpecificHistoryScreen", "Carregando detalhes do jogo $gameId")
+                        gameDetails = viewModel.getGameDetailsForUI(gameId)
+                        Log.d("GameSpecificHistoryScreen", "Detalhes carregados: $gameDetails")
+                        Log.d("GameSpecificHistoryScreen", "GameDetails keys: ${gameDetails?.keys}")
+                    } catch (e: Exception) {
+                        Log.e("GameSpecificHistoryScreen", "Erro ao carregar detalhes: ${e.message}", e)
+                    }
+                } else {
+                    Log.e("GameSpecificHistoryScreen", "GameId é null!")
+                }
+            }
+            
+            val players = when (val playersData = gameDetails?.get("players")) {
+                is List<*> -> {
+                    Log.d("GameSpecificHistoryScreen", "PlayersData type: ${playersData.javaClass}")
+                    Log.d("GameSpecificHistoryScreen", "PlayersData first item: ${playersData.firstOrNull()}")
+                    playersData.mapNotNull { 
+                        when (it) {
+                            is Map<*, *> -> it.entries.associate { (k, v) -> k.toString() to v }
+                            else -> {
+                                Log.d("GameSpecificHistoryScreen", "Unknown type: ${it?.javaClass}")
+                                null
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    Log.d("GameSpecificHistoryScreen", "PlayersData is not List: ${playersData?.javaClass}")
+                    emptyList()
+                }
+            }
+            val matches = when (val matchesData = gameDetails?.get("matches")) {
+                is List<*> -> {
+                    Log.d("GameSpecificHistoryScreen", "MatchesData type: ${matchesData.javaClass}")
+                    Log.d("GameSpecificHistoryScreen", "MatchesData first item: ${matchesData.firstOrNull()}")
+                    matchesData.mapNotNull { 
+                        when (it) {
+                            is Map<*, *> -> it.entries.associate { (k, v) -> k.toString() to v }
+                            else -> {
+                                Log.d("GameSpecificHistoryScreen", "Unknown type: ${it?.javaClass}")
+                                null
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    Log.d("GameSpecificHistoryScreen", "MatchesData is not List: ${matchesData?.javaClass}")
+                    emptyList()
+                }
+            }
+            
+            Log.d("GameSpecificHistoryScreen", "Players size: ${players.size}")
+            Log.d("GameSpecificHistoryScreen", "Matches size: ${matches.size}")
+            Log.d("GameSpecificHistoryScreen", "GameDetails keys: ${gameDetails?.keys}")
+            Log.d("GameSpecificHistoryScreen", "GameDetails: $gameDetails")
+            
+            // Estatísticas do torneio
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp, start = 8.dp, end = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = null, tint = OceanBlue, modifier = Modifier.size(28.dp))
+                Column(
+                    modifier = Modifier.padding(18.dp)
+                ) {
+                    Text(
+                        text = "📊 Estatísticas do Torneio",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = OceanBlue
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    val totalPlayers = players.size
+                    val totalRounds = matches.mapNotNull { 
+                        when (val rodada = it["rodada"]) {
+                            is Number -> rodada.toInt()
+                            is String -> rodada.toIntOrNull()
+                            else -> null
+                        }
+                    }.distinct().size
+                    val totalGames = matches.size
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        StatisticItem("Jogadores", totalPlayers.toString(), Icons.Default.People, PrimaryGreen)
+                        StatisticItem("Rodadas", totalRounds.toString(), Icons.Default.Refresh, OceanBlue)
+                        StatisticItem("Jogos", totalGames.toString(), Icons.Default.SportsTennis, Gold)
+                    }
+                    
+                    // Vencedores
+                    if (players.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "🏆 Pódio",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = OceanBlue
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val sortedPlayers = players.sortedByDescending { 
+                            when (val pontos = it["pontos_totais"]) {
+                                is Number -> pontos.toInt()
+                                is String -> pontos.toIntOrNull() ?: 0
+                                else -> 0
+                            }
+                        }
+                        
+                        sortedPlayers.take(3).forEachIndexed { index, player ->
+                            val playerName = player["nome"] as? String ?: ""
+                            val playerPoints = when (val pontos = player["pontos_totais"]) {
+                                is Number -> pontos.toInt()
+                                is String -> pontos.toIntOrNull() ?: 0
+                                else -> 0
+                            }
+                            
+                            val medal = when (index) {
+                                0 -> "🥇"
+                                1 -> "🥈"
+                                2 -> "🥉"
+                                else -> ""
+                            }
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "$medal $playerName",
+                                    fontSize = 15.sp,
+                                    fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (index == 0) Gold else Color.Black
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text(
+                                    text = "$playerPoints pts",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Rodadas do Torneio ${game.gameCode}",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = OceanBlue
-                )
             }
-            // Lista de rodadas ocupando toda a tela
+
+            // Lista de rodadas
+            Text(
+                text = "📋 Resultados por Rodada",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = OceanBlue,
+                modifier = Modifier.padding(start = 22.dp, top = 12.dp, bottom = 4.dp)
+            )
+            
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                items(game.rounds.size) { roundIdx ->
-                    val round = game.rounds[roundIdx]
+                // Agrupar partidas por rodada
+                val matchesByRound = matches.groupBy { 
+                    when (val rodada = it["rodada"]) {
+                        is Number -> rodada.toInt()
+                        is String -> rodada.toIntOrNull() ?: 0
+                        else -> 0
+                    }
+                }
+                val sortedRounds = matchesByRound.keys.sorted()
+                
+                items(sortedRounds.size) { index ->
+                    val roundNumber = sortedRounds[index]
+                    val roundMatches = matchesByRound[roundNumber] ?: emptyList()
+                    
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                            .padding(horizontal = 18.dp, vertical = 8.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
                             Text(
-                                "Rodada ${round.roundNumber}",
-                                fontSize = 18.sp,
-                                color = PrimaryGreen,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            // Jogo 1
-                            GameHistoryRow(
-                                gameMatch = round.game1,
-                                isEditable = isEditable,
-                                onEdit = {
-                                    if (isEditable) {
-                                        editRoundIndex = roundIdx
-                                        editGameIndex = 0
-                                        editGame = round.game1
-                                        showEditDialog = true
-                                    }
-                                }
+                                text = "Rodada $roundNumber",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = OceanBlue
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            // Jogo 2
-                            GameHistoryRow(
-                                gameMatch = round.game2,
-                                isEditable = isEditable,
-                                onEdit = {
-                                    if (isEditable) {
-                                        editRoundIndex = roundIdx
-                                        editGameIndex = 1
-                                        editGame = round.game2
-                                        showEditDialog = true
-                                    }
+                            
+                            roundMatches.forEach { match ->
+                                val jogador1Nome = match["jogador1_nome"] as? String ?: ""
+                                val jogador2Nome = match["jogador2_nome"] as? String ?: ""
+                                val pontuacao1 = when (val p1 = match["pontuacao_jogador1"]) {
+                                    is Number -> p1.toInt()
+                                    is String -> p1.toIntOrNull() ?: 0
+                                    else -> 0
                                 }
-                            )
+                                val pontuacao2 = when (val p2 = match["pontuacao_jogador2"]) {
+                                    is Number -> p2.toInt()
+                                    is String -> p2.toIntOrNull() ?: 0
+                                    else -> 0
+                                }
+                                
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "$jogador1Nome vs $jogador2Nome",
+                                        fontSize = 14.sp,
+                                        color = Color.Black,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "$pontuacao1 x $pontuacao2",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryGreen
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        // Dialog de edição
-        if (showEditDialog && editGame != null) {
-            EditScoreDialogSpecific(
-                game = editGame!!,
-                gameIndex = editGameIndex,
-                onScoreUpdated = { score1, score2 ->
-                    // Atualizar placar no ViewModel
-                    if (editRoundIndex >= 0 && editGameIndex >= 0) {
-                        viewModel.updateRoundScore(editGameIndex, score1, score2)
-                    }
-                    showEditDialog = false
-                },
-                onDismiss = { showEditDialog = false }
-            )
-        }
     }
 }
 
 @Composable
-private fun InfoItem(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color) {
+private fun StatisticItem(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(40.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(color.copy(alpha = 0.13f)),
             contentAlignment = Alignment.Center
@@ -171,250 +384,20 @@ private fun InfoItem(label: String, value: String, icon: androidx.compose.ui.gra
                 imageVector = icon,
                 contentDescription = null,
                 tint = color,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = value,
-            fontSize = 15.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = Color.Black
         )
         Text(
             text = label,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             color = Color.Gray
         )
-    }
-}
-
-@Composable
-private fun GameHistoryRow(
-    gameMatch: GameMatch,
-    isEditable: Boolean,
-    onEdit: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "${gameMatch.pair1.first.name} & ${gameMatch.pair1.second.name}",
-            fontSize = 14.sp,
-            color = Color.Black,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = "${gameMatch.pair1Score} x ${gameMatch.pair2Score}",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = PrimaryGreen
-        )
-        Text(
-            text = "${gameMatch.pair2.first.name} & ${gameMatch.pair2.second.name}",
-            fontSize = 14.sp,
-            color = Color.Black,
-            modifier = Modifier.weight(1f)
-        )
-        if (isEditable) {
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = null, tint = PrimaryGreen)
-            }
-        } else {
-            Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = null,
-                tint = Color.Gray,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-// Adicionar EditScoreDialog local
-@Composable
-fun EditScoreDialogSpecific(
-    game: GameMatch,
-    gameIndex: Int,
-    onScoreUpdated: (Int, Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var pair1Score by remember { mutableStateOf(game.pair1Score.toString()) }
-    var pair2Score by remember { mutableStateOf(game.pair2Score.toString()) }
-    
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(20.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(PrimaryGreen),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Text(
-                    text = "Editar Placar",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Text(
-                    text = "${game.pair1.first.name} & ${game.pair1.second.name} vs ${game.pair2.first.name} & ${game.pair2.second.name}",
-                    fontSize = 14.sp,
-                    color = Color.Gray,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Dupla A",
-                            fontSize = 12.sp,
-                            color = PrimaryGreen
-                        )
-                        OutlinedTextField(
-                            value = pair1Score,
-                            onValueChange = { 
-                                val filtered = it.filter { char -> char.isDigit() }
-                                val score = filtered.toIntOrNull() ?: 0
-                                if (score <= 6) {
-                                    pair1Score = filtered
-                                }
-                            },
-                            modifier = Modifier.width(80.dp),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = PrimaryGreen
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            singleLine = true
-                        )
-                    }
-                    
-                    Text(
-                        text = "VS",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Gray
-                    )
-                    
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Dupla B",
-                            fontSize = 12.sp,
-                            color = OceanBlue
-                        )
-                        OutlinedTextField(
-                            value = pair2Score,
-                            onValueChange = { 
-                                val filtered = it.filter { char -> char.isDigit() }
-                                val score = filtered.toIntOrNull() ?: 0
-                                if (score <= 6) {
-                                    pair2Score = filtered
-                                }
-                            },
-                            modifier = Modifier.width(80.dp),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = OceanBlue
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            singleLine = true
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Mensagem de validação
-                val totalScore = (pair1Score.toIntOrNull() ?: 0) + (pair2Score.toIntOrNull() ?: 0)
-                Text(
-                    text = when {
-                        totalScore == 6 -> "✅ Total válido: $totalScore pontos"
-                        totalScore < 6 -> "⚠️ Total: $totalScore pontos (precisa ser 6)"
-                        totalScore > 6 -> "❌ Total: $totalScore pontos (máximo 6)"
-                        else -> "📝 Digite os pontos (total deve ser 6)"
-                    },
-                    fontSize = 12.sp,
-                    color = when {
-                        totalScore == 6 -> PrimaryGreen
-                        totalScore > 6 -> Color.Red
-                        else -> Color.Gray
-                    },
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Cancelar")
-                    }
-                    
-                    Button(
-                        onClick = {
-                            val score1 = pair1Score.toIntOrNull() ?: 0
-                            val score2 = pair2Score.toIntOrNull() ?: 0
-                            // Validação correta: total deve ser EXATAMENTE 6 pontos
-                            if (score1 + score2 == 6 && score1 <= 6 && score2 <= 6) {
-                                onScoreUpdated(score1, score2)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
-                        shape = RoundedCornerShape(8.dp),
-                        // Botão só fica habilitado se total for EXATAMENTE 6
-                        enabled = (pair1Score.toIntOrNull() ?: 0) + (pair2Score.toIntOrNull() ?: 0) == 6
-                    ) {
-                        Text(
-                            text = "Salvar",
-                            color = Color.White
-                        )
-                    }
-                }
-            }
-        }
     }
 } 

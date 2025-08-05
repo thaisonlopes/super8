@@ -24,13 +24,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.beach.super8.R
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
 fun HomeScreen(
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateToGameCode: () -> Unit,
     onNavigateToGameHistory: () -> Unit,
     onNavigateToRanking: () -> Unit
@@ -39,10 +39,21 @@ fun HomeScreen(
     
     val statistics by viewModel.statistics.collectAsState()
     val finishedGames by viewModel.finishedGames.collectAsState()
+    val savedPlayers by viewModel.savedPlayers.collectAsState() // Adicionar dados dos jogadores
+    
+    // Carregar ranking geral quando a tela for exibida
+    LaunchedEffect(Unit) {
+        Log.d("HomeScreen", "Carregando ranking geral...")
+        viewModel.reloadGeneralRanking()
+        Log.d("HomeScreen", "Carregando jogos finalizados...")
+        viewModel.loadFinishedGames()
+    }
     
     Log.d("HomeScreen", "=== DADOS CARREGADOS ===")
     Log.d("HomeScreen", "FinishedGames size: ${finishedGames.size}")
     Log.d("HomeScreen", "FinishedGames: ${finishedGames.map { it.gameCode }}")
+    Log.d("HomeScreen", "SavedPlayers size: ${savedPlayers.size}")
+    Log.d("HomeScreen", "SavedPlayers: ${savedPlayers.map { "${it.name}: ${it.totalPoints} pts (${it.gamesPlayed} jogos)" }}")
     Log.d("HomeScreen", "Statistics: $statistics")
     
     Box(
@@ -100,7 +111,7 @@ fun HomeScreen(
             
             item {
                 // Statistics Card
-                StatisticsCard(statistics)
+                StatisticsCard(finishedGames, savedPlayers)
             }
             
             item {
@@ -342,7 +353,7 @@ private fun MenuCardsSection(
 }
 
 @Composable
-private fun StatisticsCard(statistics: com.beach.super8.viewmodel.GameStatistics) {
+private fun StatisticsCard(finishedGames: List<com.beach.super8.model.Game>, savedPlayers: List<com.beach.super8.model.Player>) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -393,19 +404,19 @@ private fun StatisticsCard(statistics: com.beach.super8.viewmodel.GameStatistics
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 StatisticItem(
-                    value = statistics.gamesPlayed.toString(),
+                    value = finishedGames.size.toString(),
                     label = stringResource(R.string.games_played),
                     icon = Icons.Default.SportsTennis,
                     color = PrimaryGreen
                 )
                 StatisticItem(
-                    value = statistics.roundsPlayed.toString(),
+                    value = finishedGames.sumOf { it.rounds.size }.toString(),
                     label = stringResource(R.string.rounds_played),
                     icon = Icons.Default.Refresh,
                     color = OceanBlue
                 )
                 StatisticItem(
-                    value = statistics.uniquePlayers.toString(),
+                    value = savedPlayers.size.toString(),
                     label = stringResource(R.string.unique_players),
                     icon = Icons.Default.People,
                     color = Gold

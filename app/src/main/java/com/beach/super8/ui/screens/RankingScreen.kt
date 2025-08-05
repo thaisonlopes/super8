@@ -21,15 +21,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.animation.animateContentSize
 
 @Composable
 fun RankingScreen(
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateToHistory: (String) -> Unit,
     onNavigateToHome: () -> Unit
 ) {
@@ -40,6 +41,7 @@ fun RankingScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var selectedPlayer by remember { mutableStateOf<com.beach.super8.model.Player?>(null) }
     var editedScore by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() } // NOVO
     
     Log.d("RankingScreen", "CurrentGame: ${currentGame?.gameCode}")
     Log.d("RankingScreen", "CurrentGame isFinished: ${currentGame?.isFinished}")
@@ -51,6 +53,10 @@ fun RankingScreen(
             Log.d("RankingScreen", "=== PROCESSANDO DADOS ===")
             currentGame?.let { game ->
                 viewModel.saveGameToHistory(game)
+                // Mostrar feedback visual
+                CoroutineScope(Dispatchers.Main).launch {
+                    snackbarHostState.showSnackbar("Torneio salvo com sucesso!")
+                }
                 Log.d("RankingScreen", "Jogo salvo no histórico: ${game.gameCode}")
             }
             isDataProcessed = true
@@ -85,6 +91,8 @@ fun RankingScreen(
                 )
             )
     ) {
+        // Adicionar SnackbarHost
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 20.dp)
@@ -124,16 +132,25 @@ fun RankingScreen(
                 // Verificar se há empate entre os 2 primeiros
                 val hasTie = sortedPlayers.size >= 2 && sortedPlayers[0].totalPoints == sortedPlayers[1].totalPoints
                 
+                // Identificar empates entre 1º, 2º e 3º
+                val empate1e2 = sortedPlayers.size >= 2 && sortedPlayers[0].totalPoints == sortedPlayers[1].totalPoints
+                val empate2e3 = sortedPlayers.size >= 3 && sortedPlayers[1].totalPoints == sortedPlayers[2].totalPoints
+                val empate1e2e3 = sortedPlayers.size >= 3 && sortedPlayers[0].totalPoints == sortedPlayers[1].totalPoints && sortedPlayers[1].totalPoints == sortedPlayers[2].totalPoints
                 itemsIndexed(sortedPlayers) { index, player ->
+                    val podeEditar = !isDataProcessed && (
+                        (empate1e2e3 && index < 3) ||
+                        (empate1e2 && !empate2e3 && index < 2) ||
+                        (!empate1e2 && empate2e3 && index in 1..2)
+                    )
                     PlayerRankingCard(
                         position = index + 1,
                         player = player,
                         isWinner = index < 2,
                         isLast = index >= sortedPlayers.size - 2,
                         isDataProcessed = isDataProcessed,
-                        showEditButton = hasTie && index < 2 && !isDataProcessed, // Só mostra lápis se há empate e não processado
-                        onEditScore = { 
-                            if (!isDataProcessed && hasTie && index < 2) {
+                        showEditButton = podeEditar,
+                        onEditScore = {
+                            if (podeEditar) {
                                 selectedPlayer = player
                                 editedScore = player.totalPoints.toString()
                                 showEditDialog = true
@@ -153,7 +170,10 @@ fun RankingScreen(
             item {
                 // Botões de ação
                 RankingActionButtonsSection(
+                    currentGame = currentGame,
+                    viewModel = viewModel,
                     isDataProcessed = isDataProcessed,
+                    setIsDataProcessed = { isDataProcessed = it },
                     isProcessing = false,
                     onProcessData = processData,
                     onNavigateToHistory = navigateToSpecificHistory,
@@ -191,12 +211,18 @@ fun RankingScreen(
 
 @Composable
 fun GeneralRankingScreen(
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateBack: () -> Unit
 ) {
     Log.d("GeneralRankingScreen", "=== RANKING GERAL INICIADO ===")
     
     val savedPlayers by viewModel.savedPlayers.collectAsState()
+    
+    // Recarregar dados quando a tela for exibida
+    LaunchedEffect(Unit) {
+        Log.d("GeneralRankingScreen", "Recarregando dados do ranking geral...")
+        viewModel.reloadGeneralRanking()
+    }
     
     Box(
         modifier = Modifier
@@ -1017,7 +1043,10 @@ private fun StatItem(
 
 @Composable
 private fun RankingActionButtonsSection(
+    currentGame: com.beach.super8.model.Game?,
+    viewModel: PostgresGameViewModel,
     isDataProcessed: Boolean,
+    setIsDataProcessed: (Boolean) -> Unit, // NOVO
     isProcessing: Boolean,
     onProcessData: () -> Unit,
     onNavigateToHistory: () -> Unit,
@@ -1029,11 +1058,20 @@ private fun RankingActionButtonsSection(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Botão Processar Dados (só aparece se não processado)
-        if (!isDataProcessed) {
+        // Trocar texto do botão e lógica de exibição
+        // Substituir todas as ocorrências de 'Processar Dados' por 'Salvar'
+        // O botão só aparece se currentGame?.isFinished == false
+        val podeSalvar = currentGame?.isFinished == false && !isDataProcessed
+
+        if (podeSalvar) {
             Button(
-                onClick = onProcessData,
-                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    onProcessData() // Chama a função que já faz tudo
+                    setIsDataProcessed(true) // USAR SETTER
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(),
                 colors = ButtonDefaults.buttonColors(containerColor = Gold),
                 shape = RoundedCornerShape(12.dp),
                 enabled = !isProcessing
@@ -1056,7 +1094,7 @@ private fun RankingActionButtonsSection(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
                     Text(
-                        text = if (isProcessing) "Processando..." else "Processar Dados",
+                        text = if (isProcessing) "Processando..." else "Processar Dados", // VOLTA PARA 'Processar Dados'
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.Black

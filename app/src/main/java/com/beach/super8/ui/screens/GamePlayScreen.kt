@@ -22,12 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.beach.super8.R
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun GamePlayScreen(
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToRanking: () -> Unit,
     onNavigateToHome: () -> Unit
@@ -78,9 +78,8 @@ fun GamePlayScreen(
                     CurrentRoundWithScoresCard(
                         round = round,
                         onScoreUpdate = { gameIndex, pair1Score, pair2Score ->
-                            android.util.Log.d("GamePlayScreen", "=== CHAMANDO UPDATE ROUND SCORE ===")
-                            android.util.Log.d("GamePlayScreen", "GameIndex: $gameIndex, Scores: $pair1Score x $pair2Score")
-                            viewModel.updateRoundScore(gameIndex, pair1Score, pair2Score)
+                            val roundIndex = round.roundNumber - 1 // ou use o índice correto da rodada
+                            viewModel.updateRoundScore(roundIndex, gameIndex, pair1Score, pair2Score)
                         }
                     )
                 }

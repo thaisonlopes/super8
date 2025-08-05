@@ -22,22 +22,24 @@ import androidx.compose.ui.window.Dialog
 import com.beach.super8.model.GameMatch
 import com.beach.super8.model.Round
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 
 @Composable
 fun GameHistoryScreen(
-    viewModel: GameViewModel,
-    onNavigateBack: () -> Unit
+    viewModel: PostgresGameViewModel,
+    onNavigateBack: () -> Unit,
+    onNavigateToGameDetails: (String) -> Unit = {}
 ) {
     val finishedGames by viewModel.finishedGames.collectAsState()
     val currentGame by viewModel.currentGame.collectAsState()
 
     // Carregar histórico quando a tela for iniciada
     LaunchedEffect(Unit) {
-        viewModel.loadHistoryIfNeeded()
+        viewModel.loadFinishedGames()
     }
 
     Box(
@@ -161,7 +163,15 @@ fun GameHistoryScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                                .padding(horizontal = 18.dp, vertical = 8.dp)
+                                .clickable {
+                                    // Carregar detalhes do jogo e navegar
+                                    val gameId = game.id.toIntOrNull()
+                                    if (gameId != null) {
+                                        viewModel.loadGameDetails(gameId)
+                                        onNavigateToGameDetails(game.gameCode)
+                                    }
+                                },
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                             shape = RoundedCornerShape(16.dp)
@@ -185,40 +195,90 @@ fun GameHistoryScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
+                                
+                                // Carregar dados reais do jogo
+                                val gameId = game.id.toIntOrNull()
+                                var gameDetails by remember { mutableStateOf<Map<String, Any>?>(null) }
+                                
+                                LaunchedEffect(gameId) {
+                                    if (gameId != null) {
+                                        gameDetails = viewModel.getGameDetailsForUI(gameId)
+                                    }
+                                }
+                                
+                                val players = gameDetails?.get("players") as? List<Map<*, *>> ?: emptyList()
+                                val matches = gameDetails?.get("matches") as? List<Map<*, *>> ?: emptyList()
+                                
+                                val totalPlayers = players.size
+                                val totalRounds = matches.mapNotNull { 
+                                    when (val rodada = it["rodada"]) {
+                                        is Number -> rodada.toInt()
+                                        is String -> rodada.toIntOrNull()
+                                        else -> null
+                                    }
+                                }.distinct().size
+                                val totalGames = matches.size
+                                
                                 Text(
-                                    text = "${game.players.size} jogadores • ${game.rounds.size} rodadas • ${game.rounds.size * 2} jogos",
+                                    text = "$totalPlayers jogadores • $totalRounds rodadas • $totalGames jogos",
                                     fontSize = 13.sp,
                                     color = Color.Gray
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
+                                
                                 // Vencedores
-                                val sortedPlayers = game.players.sortedByDescending { it.totalPoints }
-                                val winners = sortedPlayers.take(2)
-                                if (winners.isNotEmpty()) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "🏆 ",
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Gold
-                                        )
-                                        Text(
-                                            text = winners[0].name,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Gold
-                                        )
-                                        Text(
-                                            text = " (${winners[0].totalPoints} pts)",
-                                            fontSize = 13.sp,
-                                            color = Color.Gray
-                                        )
-                                        if (winners.size > 1) {
+                                if (players.isNotEmpty()) {
+                                    val sortedPlayers = players.sortedByDescending { 
+                                        when (val pontos = it["pontos_totais"]) {
+                                            is Number -> pontos.toInt()
+                                            is String -> pontos.toIntOrNull() ?: 0
+                                            else -> 0
+                                        }
+                                    }
+                                    
+                                    if (sortedPlayers.isNotEmpty()) {
+                                        val winner = sortedPlayers[0]
+                                        val winnerName = winner["nome"] as? String ?: ""
+                                        val winnerPoints = when (val pontos = winner["pontos_totais"]) {
+                                            is Number -> pontos.toInt()
+                                            is String -> pontos.toIntOrNull() ?: 0
+                                            else -> 0
+                                        }
+                                        
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
-                                                text = "  •  🥈 ${winners[1].name} (${winners[1].totalPoints} pts)",
+                                                text = "🏆 ",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Gold
+                                            )
+                                            Text(
+                                                text = winnerName,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Gold
+                                            )
+                                            Text(
+                                                text = " ($winnerPoints pts)",
                                                 fontSize = 13.sp,
                                                 color = Color.Gray
                                             )
+                                            
+                                            if (sortedPlayers.size > 1) {
+                                                val runnerUp = sortedPlayers[1]
+                                                val runnerUpName = runnerUp["nome"] as? String ?: ""
+                                                val runnerUpPoints = when (val pontos = runnerUp["pontos_totais"]) {
+                                                    is Number -> pontos.toInt()
+                                                    is String -> pontos.toIntOrNull() ?: 0
+                                                    else -> 0
+                                                }
+                                                
+                                                Text(
+                                                    text = "  •  🥈 $runnerUpName ($runnerUpPoints pts)",
+                                                    fontSize = 13.sp,
+                                                    color = Color.Gray
+                                                )
+                                            }
                                         }
                                     }
                                 }

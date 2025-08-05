@@ -23,11 +23,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.beach.super8.R
 import com.beach.super8.ui.theme.*
-import com.beach.super8.viewmodel.GameViewModel
+import com.beach.super8.viewmodel.PostgresGameViewModel
 
 @Composable
 fun GameCodeScreen(
-    viewModel: GameViewModel,
+    viewModel: PostgresGameViewModel,
     onNavigateToPlayerRegistration: (String) -> Unit,
     onNavigateToGamePlay: (String) -> Unit,
     onNavigateBack: () -> Unit
@@ -109,19 +109,19 @@ fun GameCodeScreen(
                             
                             // Validar código
                             when (viewModel.validateGameCode(gameCode)) {
-                                GameViewModel.GameCodeValidation.EMPTY -> {
+                                PostgresGameViewModel.GameCodeValidation.EMPTY -> {
                                     errorMessage = "Digite um código para entrar no jogo!"
                                     showErrorDialog = true
                                 }
-                                GameViewModel.GameCodeValidation.NOT_FOUND -> {
+                                PostgresGameViewModel.GameCodeValidation.NOT_FOUND -> {
                                     errorMessage = "Código não encontrado! Verifique o código digitado."
                                     showErrorDialog = true
                                 }
-                                GameViewModel.GameCodeValidation.FINISHED -> {
+                                PostgresGameViewModel.GameCodeValidation.FINISHED -> {
                                     errorMessage = "Este jogo já foi finalizado! Não é possível entrar."
                                     showErrorDialog = true
                                 }
-                                GameViewModel.GameCodeValidation.VALID -> {
+                                PostgresGameViewModel.GameCodeValidation.VALID -> {
                                     Log.d("GameCodeScreen", "Código válido, carregando jogo...")
                                     val loadedGame = viewModel.loadGameByCode(gameCode)
                                     if (loadedGame != null) {

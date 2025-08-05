@@ -1,13 +1,13 @@
 package com.beach.super8
 
-import android.util.Log
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -18,44 +18,29 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.beach.super8.navigation.Screen
-import com.beach.super8.ui.screens.GameCodeScreen
-import com.beach.super8.ui.screens.GamePlayScreen
-import com.beach.super8.ui.screens.GameHistoryScreen
-import com.beach.super8.ui.screens.HomeScreen
-import com.beach.super8.ui.screens.PlayerRegistrationScreen
-import com.beach.super8.ui.screens.RankingScreen
+import com.beach.super8.ui.screens.*
 import com.beach.super8.ui.theme.Super8Theme
-import com.beach.super8.viewmodel.GameViewModel
-import com.beach.super8.ui.screens.GeneralRankingScreen
+import com.beach.super8.viewmodel.PostgresGameViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        try {
-            Log.d("MainActivity", "=== MAIN ACTIVITY INICIADA ===")
-            Log.d("MainActivity", "Context: $this")
-            Log.d("MainActivity", "Intent: ${intent?.action}")
-            
-            enableEdgeToEdge()
-            Log.d("MainActivity", "Edge to edge habilitado")
-            
-            setContent {
-                Log.d("MainActivity", "Iniciando setContent")
-                Super8Theme {
-                    Log.d("MainActivity", "Super8Theme aplicado")
-                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                        Log.d("MainActivity", "Scaffold criado")
-                        Super8App(
-                            modifier = Modifier.padding(innerPadding),
-                            context = this
-                        )
-                    }
+        enableEdgeToEdge()
+        
+        Log.d("MainActivity", "=== MAIN ACTIVITY INICIADA ===")
+        
+        setContent {
+            Super8Theme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Super8App(
+                        modifier = Modifier,
+                        context = this
+                    )
                 }
-                Log.d("MainActivity", "setContent concluído")
             }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "ERRO CRÍTICO NO ONCREATE: ${e.message}", e)
-            Log.e("MainActivity", "Stack trace completo:", e)
         }
     }
 }
@@ -69,19 +54,8 @@ fun Super8App(
     val navController = rememberNavController()
     Log.d("Super8App", "NavController criado")
     
-    val viewModel: GameViewModel = viewModel()
-    Log.d("Super8App", "GameViewModel criado")
-    
-    // Passar o contexto para o ViewModel
-    LaunchedEffect(Unit) {
-        try {
-            Log.d("Super8App", "LaunchedEffect iniciado")
-            viewModel.setContext(context)
-            Log.d("Super8App", "Contexto definido no ViewModel")
-        } catch (e: Exception) {
-            Log.e("Super8App", "ERRO NO LAUNCHEDEFFECT: ${e.message}", e)
-        }
-    }
+    val viewModel: PostgresGameViewModel = viewModel()
+    Log.d("Super8App", "PostgresGameViewModel criado")
     
     Log.d("Super8App", "Iniciando NavHost")
     NavHost(
@@ -168,46 +142,19 @@ fun Super8App(
             Log.d("Super8App", "=== RENDERIZANDO GAME PLAY SCREEN ===")
             GamePlayScreen(
                 viewModel = viewModel,
-                onNavigateBack = {
-                    Log.d("Super8App", "Voltando de GamePlay")
-                    navController.popBackStack()
-                },
                 onNavigateToRanking = {
                     Log.d("Super8App", "Navegando para Ranking")
                     navController.navigate(Screen.Ranking.route)
                 },
+                onNavigateBack = {
+                    Log.d("Super8App", "Voltando de GamePlay")
+                    navController.popBackStack()
+                },
                 onNavigateToHome = {
-                    Log.d("Super8App", "Voltando para Home do GamePlay")
-                    navController.navigate(Screen.Home.route)
-                }
-            )
-        }
-        
-        composable(Screen.GameHistory.route) {
-            Log.d("Super8App", "=== RENDERIZANDO GAME HISTORY SCREEN ===")
-            GameHistoryScreen(
-                viewModel = viewModel,
-                onNavigateBack = {
-                    Log.d("Super8App", "Voltando de GameHistory")
-                    navController.popBackStack()
-                }
-            )
-        }
-        
-        composable(
-            route = "${Screen.GameSpecificHistory.route}",
-            arguments = listOf(
-                navArgument("gameCode") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val gameCode = backStackEntry.arguments?.getString("gameCode") ?: ""
-            Log.d("Super8App", "=== RENDERIZANDO GAME SPECIFIC HISTORY SCREEN ===")
-            com.beach.super8.ui.screens.GameSpecificHistoryScreen(
-                gameCode = gameCode,
-                viewModel = viewModel,
-                onNavigateBack = {
-                    Log.d("Super8App", "Voltando de GameSpecificHistory")
-                    navController.popBackStack()
+                    Log.d("Super8App", "Navegando para Home")
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }
@@ -217,19 +164,13 @@ fun Super8App(
             RankingScreen(
                 viewModel = viewModel,
                 onNavigateToHistory = { gameCode ->
-                    Log.d("Super8App", "Navegando para GameSpecificHistory com código $gameCode")
-                    navController.navigate(Screen.GameSpecificHistory.createRoute(gameCode))
+                    Log.d("Super8App", "Navegando para GameSpecificHistory com código: $gameCode")
+                    navController.navigate("${Screen.GameSpecificHistory.route}/$gameCode")
                 },
                 onNavigateToHome = {
-                    Log.d("Super8App", "Voltando para Home do Ranking")
-                    try {
-                        // Navegação simples sem destruir a pilha
-                        navController.navigate(Screen.Home.route) {
-                            // Limpar apenas a pilha até a home, não destruir tudo
-                            popUpTo(Screen.Home.route) { inclusive = false }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("Super8App", "Erro ao voltar para Home: ${e.message}", e)
+                    Log.d("Super8App", "Navegando para Home")
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
                     }
                 }
             )
@@ -245,5 +186,40 @@ fun Super8App(
                 }
             )
         }
+        
+        composable(Screen.GameHistory.route) {
+            Log.d("Super8App", "=== RENDERIZANDO GAME HISTORY SCREEN ===")
+            GameHistoryScreen(
+                viewModel = viewModel,
+                onNavigateBack = {
+                    Log.d("Super8App", "Voltando de GameHistory")
+                    navController.popBackStack()
+                },
+                onNavigateToGameDetails = { gameCode ->
+                    Log.d("Super8App", "Navegando para GameSpecificHistory com código: $gameCode")
+                    navController.navigate("${Screen.GameSpecificHistory.route}/$gameCode")
+                }
+            )
+        }
+        
+        composable(
+            route = "${Screen.GameSpecificHistory.route}/{gameCode}",
+            arguments = listOf(
+                navArgument("gameCode") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val gameCode = backStackEntry.arguments?.getString("gameCode") ?: ""
+            Log.d("Super8App", "=== RENDERIZANDO GAME SPECIFIC HISTORY SCREEN ===")
+            GameSpecificHistoryScreen(
+                gameCode = gameCode,
+                viewModel = viewModel,
+                onNavigateBack = {
+                    Log.d("Super8App", "Voltando de GameSpecificHistory")
+                    navController.popBackStack()
+                }
+            )
+        }
     }
+    
+    Log.d("Super8App", "=== SUPER8APP CONCLUÍDA ===")
 }
